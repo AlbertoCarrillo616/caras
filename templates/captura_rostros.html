@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Captura de Rostros</title>
+  <style>
+    img { border: 1px solid black; margin: 10px; }
+    #status { margin-top: 10px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h2>Vista desde ESP32-CAM (actualiza cada segundo)</h2>
+<img id="foto" src="http://192.168.127.192:8080/capture" width="320" height="240">
+
+<h3>Nombre:</h3>
+<input type="text" id="name" placeholder="ej. juan">
+
+<br><br>
+<button onclick="guardar()">Guardar rostro</button>
+<button onclick="verificar()">Verificar coincidencia</button>
+<p id="status"></p>
+
+<script>
+const ESP32_CAPTURE_URL = "http://192.168.127.192:8080/capture";        
+const ESP32_ACTIVAR_OK = "http://192.168.127.192:8080/activar_ok";      
+const ESP32_ACTIVAR_ERROR = "http://192.168.127.192:8080/activar_error"; 
+const FLASK_REGISTER_URL = "http://192.168.76.118:5000/register";      
+const FLASK_DETECT_URL = "http://192.168.76.118:5000/detect";
+
+// Refrescar imagen cada 1 segundo
+setInterval(() => {
+  const t = new Date().getTime();
+  document.getElementById("foto").src = `${ESP32_CAPTURE_URL}?t=${t}`;
+}, 1000);
+
+// Captura la imagen actual como blob
+function capturarImagen(callback) {
+  fetch(ESP32_CAPTURE_URL)
+    .then(res => res.blob())
+    .then(blob => callback(blob))
+    .catch(err => {
+      document.getElementById("status").textContent = "❌ Error al capturar desde ESP32: " + err;
+    });
+}
+
+// Guardar rostro en Flask
+function guardar() {
+  const nombre = document.getElementById("name").value.trim();
+  if (!nombre) {
+    alert("Escribe un nombre antes de guardar.");
+    return;
+  }
+
+  capturarImagen(blob => {
+    const formData = new FormData();
+    formData.append("name", nombre);
+    formData.append("image", blob, "rostro.jpg");
+
+    fetch(FLASK_REGISTER_URL, {
+      method: "POST",
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.saved) {
+        document.getElementById("status").textContent = "✅ Guardado: " + data.saved.join(", ");
+      } else {
+        document.getElementById("status").textContent = "⚠ " + JSON.stringify(data);
+      }
+    })
+    .catch(err => {
+      document.getElementById("status").textContent = "❌ Error al guardar: " + err;
+    });
+  });
+}
+
+// Verificar coincidencia con Flask y activar ESP32 si coincide
+function verificar() {
+  capturarImagen(blob => {
+    const formData = new FormData();
+    formData.append("image", blob, "verificar.jpg");
+
+    fetch(FLASK_DETECT_URL, {
+      method: "POST",
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.match) {
+        document.getElementById("status").textContent = "✅ Coincidencia: " + data.person;
+
+        // Activar ESP32 solo si hubo coincidencia
+        fetch(ESP32_ACTIVAR_OK)
+          .then(() => console.log("✅ ESP32 relevador activado"))
+          .catch(err => console.warn("❌ Error activando ESP32:", err));
+      } else {
+        document.getElementById("status").textContent = "❌ Sin coincidencia. " + (data.reason || "");
+
+        // Opcional: notificar al ESP32 que no hubo coincidencia
+        fetch(ESP32_ACTIVAR_ERROR)
+          .then(() => console.log("⚠️ ESP32 notificado de error"))
+          .catch(err => console.warn("❌ Error notificando a ESP32:", err));
+      }
+    })
+    .catch(err => {
+      document.getElementById("status").textContent = "❌ Error al verificar: " + err;
+    });
+  });
+}
+</script>
+
+</body>
+</html>
