@@ -11,7 +11,7 @@ import subprocess
 app = Flask(__name__)
 
 # === Firebase Firestore ===
-cred = credentials.Certificate("reconomiciento-facial-firebase-adminsdk-fbsvc-89852a3a66.json")
+cred = credentials.Certificate("reconomiciento-facial-firebase-adminsdk-fbsvc-4f88b81dd4.json")
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
